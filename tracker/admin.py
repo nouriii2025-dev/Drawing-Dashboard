@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import DailyUpdate
+from .models import *
 
 
 @admin.register(DailyUpdate)
@@ -26,6 +26,28 @@ class DailyUpdateAdmin(admin.ModelAdmin):
         "drawn_by",
         "software",
         "sales_person",
+    )
+
+@admin.register(MasterData)
+class MasterDataAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "category",
+        "value",
+        "created_at",
+    )
+
+    list_filter = (
+        "category",
+    )
+
+    search_fields = (
+        "value",
+    )
+
+    ordering = (
+        "category",
+        "value",
     )
 
 
