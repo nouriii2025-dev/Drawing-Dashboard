@@ -48,3 +48,34 @@ class DailyUpdate(models.Model):
 
 
 
+class MasterData(models.Model):
+
+    CATEGORY_CHOICES = [
+        ("status", "Status"),
+        ("drawn_by", "Drawn By"),
+        ("software", "Software"),
+        ("sales_person", "Sales Person"),
+    ]
+
+    category = models.CharField(
+        max_length=30,
+        choices=CATEGORY_CHOICES,
+        db_index=True
+    )
+
+    value = models.CharField(max_length=200)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["category", "value"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["category", "value"],
+                name="unique_master_category_value"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.get_category_display()}: {self.value}"

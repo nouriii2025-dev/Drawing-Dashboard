@@ -1,0 +1,52 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf" content="{{ csrf_token }}">
+    <title>Master Data | Drawing Dashboard</title>
+    <link rel="stylesheet" href="{% static 'tracker/app.css' %}">
+    <link rel="stylesheet" href="{% static 'tracker/master_data.css' %}">
+</head>
+<body>
+<header class="topbar">
+    <div class="topbar-inner">
+        <div class="brand"><div><strong>Drawing Dashboard</strong><small>Master Data Management</small></div></div>
+        <nav class="tabs">
+            <a class="tab" href="/">Daily Updates</a>
+            <a class="tab active" href="/master-data/">Master Data</a>
+        </nav>
+        <a class="btn" href="/">Back to Dashboard</a>
+    </div>
+</header>
+<main class="page master-page">
+    <section id="masterHome">
+        <div class="master-heading">
+            <div><h1>Master Data</h1><p>Choose a category to view and manage its dropdown values.</p></div>
+        </div>
+        <div id="masterGrid" class="master-grid">
+            <div class="loading-state">Loading master data...</div>
+        </div>
+    </section>
+
+    <section id="masterDetail" class="master-detail" hidden>
+        <div class="detail-heading">
+            <button type="button" class="btn" id="backToCategories">← All categories</button>
+            <div class="detail-title"><span class="detail-kicker">MASTER DATA CATEGORY</span><h1 id="detailTitle">Category</h1><p id="detailDescription">Manage available dropdown values.</p></div>
+            <span class="detail-count" id="detailCount">0 values</span>
+        </div>
+        <div class="detail-panel">
+            <div class="panel-heading"><div><h2>Available values</h2><p>These values appear in the drawing entry dropdown.</p></div></div>
+            <form id="masterAddForm" class="master-add">
+                <input id="masterValueInput" type="text" maxlength="200" placeholder="Enter a new value..." required>
+                <button type="submit" class="btn primary" id="masterAddButton">＋ Add value</button>
+            </form>
+            <div id="masterList" class="master-list"></div>
+        </div>
+    </section>
+</main>
+<div class="toasts" id="toasts"></div>
+<script src="{% static 'tracker/master_data.js' %}"></script>
+</body>
+</html>

@@ -8,7 +8,7 @@ from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_GET, require_http_methods
 
-from .models import DailyUpdate
+from .models import DailyUpdate, MasterData
 
 # Values from the lookup lists on the workbook's "Sheet1" tab. They seed the
 # dropdowns; anything already in the database is merged in on top.
@@ -56,6 +56,8 @@ READ_ONLY = {"id", "position", "period", "created_at", "updated_at"}
 def index(request):
     return render(request, "tracker/index.html")
 
+def master_data_page(request):
+    return render(request, "tracker/master_data.html")
 
 # ---------- helpers ----------
 
@@ -212,11 +214,54 @@ def _merge(defaults, existing):
 
 @require_GET
 def options(request):
+    # qs = DailyUpdate.objects
+    # distinct = lambda f: sorted(qs.exclude(**{f: ""}).values_list(f, flat=True).distinct(), key=str.lower)
+    # data = {key: _merge(SHEET_LISTS.get(key, []), distinct(key)) for key in (
+    #     "status", "software", "drawn_by", "approved_by", "issued_for", "dwg_status", "sales_person",
+    # )}
+
     qs = DailyUpdate.objects
-    distinct = lambda f: sorted(qs.exclude(**{f: ""}).values_list(f, flat=True).distinct(), key=str.lower)
-    data = {key: _merge(SHEET_LISTS.get(key, []), distinct(key)) for key in (
-        "status", "software", "drawn_by", "approved_by", "issued_for", "dwg_status", "sales_person",
-    )}
+
+    distinct = lambda f: sorted(
+        qs.exclude(**{f: ""})
+        .values_list(f, flat=True)
+        .distinct(),
+        key=str.lower
+    )
+
+    managed = {
+        key: list(
+            MasterData.objects
+            .filter(category=key)
+            .order_by("value")
+            .values_list("value", flat=True)
+        )
+        for key in (
+            "status",
+            "software",
+            "drawn_by",
+            "sales_person"
+        )
+    }
+
+    data = managed.copy()
+
+    data.update({
+        key: _merge(
+            SHEET_LISTS.get(key, []),
+            distinct(key)
+        )
+        for key in (
+            "approved_by",
+            "issued_for",
+            "dwg_status"
+        )
+    })
+
+    data["customer"] = _merge(
+        [],
+        distinct("customer")
+    )
     data["customer"] = _merge([], distinct("customer"))
     periods = qs.exclude(period="").values_list("period", flat=True).distinct().order_by("-period")
     data["period"] = [
@@ -303,3 +348,115 @@ def export_updates(request):
     )
     resp["Content-Disposition"] = f'attachment; filename="Daily_Update_{datetime.date.today():%d-%m-%Y}.xlsx"'
     return resp
+
+
+MASTER_CATEGORIES = {
+    "status": "Status",
+    "drawn_by": "Drawn By",
+    "software": "Software",
+    "sales_person": "Sales Person",
+}
+
+
+@require_http_methods(["GET", "POST"])
+def master_data_api(request):
+
+    if request.method == "GET":
+
+        result = {}
+
+        for key, label in MASTER_CATEGORIES.items():
+
+            result[key] = {
+                "label": label,
+                "items": list(
+                    MasterData.objects
+                    .filter(category=key)
+                    .order_by("value")
+                    .values("id", "value")
+                )
+            }
+
+        return JsonResponse(result)
+
+    try:
+        raw = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"error": "Invalid JSON."},
+            status=400
+        )
+
+    category = str(raw.get("category", "")).strip()
+    value = str(raw.get("value", "")).strip()
+
+    if category not in MASTER_CATEGORIES:
+        return JsonResponse(
+            {"error": "Invalid category."},
+            status=400
+        )
+
+    if not value:
+        return JsonResponse(
+            {"error": "Enter a value."},
+            status=400
+        )
+
+    if len(value) > 200:
+        return JsonResponse(
+            {"error": "Value is too long."},
+            status=400
+        )
+
+    if MasterData.objects.filter(
+        category=category,
+        value__iexact=value
+    ).exists():
+
+        return JsonResponse(
+            {"error": "This value already exists."},
+            status=400
+        )
+
+    item = MasterData.objects.create(
+        category=category,
+        value=value
+    )
+
+    return JsonResponse({
+        "id": item.id,
+        "category": item.category,
+        "value": item.value
+    }, status=201)
+
+
+@require_http_methods(["DELETE"])
+def master_data_item(request, pk):
+
+    try:
+        item = MasterData.objects.get(pk=pk)
+
+    except MasterData.DoesNotExist:
+        return JsonResponse(
+            {"error": "Value not found."},
+            status=404
+        )
+
+    usage = DailyUpdate.objects.filter(
+        **{item.category: item.value}
+    ).count()
+
+    if usage:
+        return JsonResponse(
+            {
+                "error": (
+                    f"This value is used by {usage} "
+                    "drawing record(s). It cannot be deleted."
+                )
+            },
+            status=409
+        )
+
+    item.delete()
+
+    return HttpResponse(status=204)
