@@ -1,0 +1,87 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf" content="{{ csrf_token }}">
+  <title>Drawing Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23334e9c'/><path d='M28 70V30h20q22 0 22 20t-22 20z' fill='none' stroke='white' stroke-width='9' stroke-linejoin='round'/></svg>">
+  <link rel="stylesheet" href="{% static 'tracker/app.css' %}">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 18V6h6a6 6 0 0 1 0 12z"/></svg></span>
+        <div><strong>Drawing Dashboard</strong><small>Daily update register</small></div>
+      </div>
+      <nav class="tabs" id="tabs" aria-label="Sections"></nav>
+      <button class="btn primary" id="addBtn" type="button"></button>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="stats" id="stats" aria-label="Summary"></section>
+
+    <div class="toolbar" id="toolbar">
+      <label class="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="search" type="search" placeholder="Search records…" autocomplete="off">
+      </label>
+      <div class="filters" id="filters"></div>
+      <div class="toolbar-end">
+        <button class="btn ghost" id="clearBtn" type="button" hidden>Clear</button>
+        <div class="menu-wrap">
+          <button class="btn" id="colsBtn" type="button" aria-haspopup="true">Columns</button>
+          <div class="menu" id="colsMenu" hidden></div>
+        </div>
+        <a class="btn" id="exportBtn" href="/api/updates/export/">Export</a>
+      </div>
+    </div>
+
+    <div class="card table-card">
+      <div class="table-scroll"><table id="grid"></table></div>
+      <div class="empty" id="empty" hidden>
+        <strong>No records found</strong>
+        <span>Try a different search or clear the filters.</span>
+      </div>
+      <div class="loading" id="loading">Loading…</div>
+    </div>
+
+    <footer class="pager" id="pager"></footer>
+  </main>
+
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawerTitle">
+    <form id="form" novalidate>
+      <header class="drawer-head">
+        <div><h2 id="drawerTitle"></h2><p id="drawerSub"></p></div>
+        <button class="icon-btn" type="button" id="closeDrawer" aria-label="Close">
+          <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </header>
+      <div class="drawer-body" id="formBody"></div>
+      <footer class="drawer-foot">
+        <button class="btn danger-ghost" type="button" id="deleteBtn">Delete</button>
+        <span class="spacer"></span>
+        <button class="btn" type="button" id="cancelBtn">Cancel</button>
+        <button class="btn primary" type="submit" id="saveBtn">Save</button>
+      </footer>
+    </form>
+  </aside>
+
+  <div class="modal" id="confirm" hidden>
+    <div class="modal-card" role="alertdialog" aria-labelledby="confirmTitle">
+      <h3 id="confirmTitle">Delete this record?</h3>
+      <p id="confirmText"></p>
+      <div class="modal-actions">
+        <button class="btn" type="button" id="confirmNo">Cancel</button>
+        <button class="btn danger" type="button" id="confirmYes">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <script src="{% static 'tracker/app.js' %}"></script>
+</body>
+</html>
