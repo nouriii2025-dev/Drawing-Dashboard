@@ -15,7 +15,7 @@
         { param: "drawn_by", label: "Drawn by", opt: "drawn_by" },
         { param: "software", label: "Software", opt: "software" },
         { param: "sales_person", label: "Sales person", opt: "sales_person" },
-        { param: "period", label: "Month", opt: "period" },
+        { param: "date", label: "Date", type: "daterange" },
       ],
       title: (r) => (r.dwg_no ? `DWG ${r.dwg_no}` : "Record"),
       subtitle: (r) => [r.item, r.customer && r.customer !== "-" ? r.customer : ""].filter(Boolean).join(" · "),
@@ -68,6 +68,7 @@
   const ICONS = {
     edit: '<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>',
     trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12M9 7V4h6v3"/>',
+    cal: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
     copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>',
   };
 
@@ -202,13 +203,13 @@
     const cancelled = (state.opts.status || []).find((x) => x.toLowerCase().startsWith("cancel")) || "Canceld";
     const cards = [
       { label: "Total drawings", value: s.total, apply: null },
-      { label: "This month", value: s.this_month, apply: { period: s.this_month_key } },
+      { label: "This month", value: s.this_month, apply: monthFilter(s.this_month_key) },
       { label: "Pending", value: s.pending, apply: { status: "Pending" } },
       { label: "Cancelled", value: s.cancelled, apply: { status: cancelled } },
     ];
     box.replaceChildren(...cards.map((c) => {
       const active = c.apply && Object.entries(c.apply).every(([k, v]) => state.filters[k] === v)
-        && Object.values(state.filters).filter(Boolean).length === 1;
+        && Object.values(state.filters).filter(Boolean).length === Object.keys(c.apply).length;
       return h(c.apply ? "button" : "div", {
         class: "stat" + (active ? " active" : ""), type: c.apply ? "button" : null,
         onclick: c.apply ? () => { state.filters = active ? {} : { ...c.apply }; state.page = 1; syncFilterUI(); load(); renderStats(); } : null,
@@ -219,6 +220,7 @@
   function renderFilters() {
     const box = $("#filters");
     box.replaceChildren(...V().filters.map((f) => {
+      if (f.type === "daterange") return buildDatePicker(f);
       const list = state.opts[f.opt] || [];
       const sel = h("select", {
         "aria-label": f.label, class: state.filters[f.param] ? "on" : "",
@@ -240,7 +242,185 @@
       s.value = state.filters[s.dataset.param] || "";
       s.classList.toggle("on", !!s.value);
     });
+    refreshDateButton();
     $("#clearBtn").hidden = !(state.q || Object.values(state.filters).some(Boolean));
+  }
+    /* ---------- Calendar date-range filter ---------- */
+  const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const WEEKDAYS = ["Mo","Tu","We","Th","Fr","Sa","Su"];
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const toISO = (y, m, d) => `${y}-${pad2(m + 1)}-${pad2(d)}`;         // m is 0-based
+  const fromISO = (iso) => { const [y, m, d] = iso.split("-").map(Number); return { y, m: m - 1, d }; };
+  const dateISO = (dt) => toISO(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  const todayISO = () => dateISO(new Date());
+  const shiftDays = (iso, n) => { const { y, m, d } = fromISO(iso); return dateISO(new Date(y, m, d + n)); };
+  const monthBounds = (y, m) => [toISO(y, m, 1), toISO(y, m, new Date(y, m + 1, 0).getDate())];
+  function monthFilter(key) {                                          // "2026-10" -> {date_from, date_to}
+    const [y, m] = key.split("-").map(Number);
+    const [a, b] = monthBounds(y, m - 1);
+    return { date_from: a, date_to: b };
+  }
+
+  const cal = { btn: null, pop: null, grid: null, title: null, from: null, to: null, y: 0, m: 0, start: "", end: "", hover: "" };
+
+  function rangeLabel(from, to) {
+    if (!from && !to) return "Date: all";
+    if (from && to) return from === to ? fmtDate(from) : `${fmtDate(from)} – ${fmtDate(to)}`;
+    return from ? `From ${fmtDate(from)}` : `Until ${fmtDate(to)}`;
+  }
+
+  function refreshDateButton() {
+    if (!cal.btn) return;
+    const { date_from: a, date_to: b } = state.filters;
+    cal.btn.querySelector(".lbl").textContent = rangeLabel(a, b);
+    cal.btn.classList.toggle("on", !!(a || b));
+  }
+
+  function datePresets() {
+    const t = todayISO(), { y, m } = fromISO(t);
+    const [ms, me] = monthBounds(y, m);
+    const [ps, pe] = monthBounds(m ? y : y - 1, (m + 11) % 12);
+    return [
+      ["Today", t, t],
+      ["Yesterday", shiftDays(t, -1), shiftDays(t, -1)],
+      ["Last 7 days", shiftDays(t, -6), t],
+      ["Last 30 days", shiftDays(t, -29), t],
+      ["This month", ms, me],
+      ["Last month", ps, pe],
+      ["This year", toISO(y, 0, 1), toISO(y, 11, 31)],
+      ["All dates", "", ""],
+    ];
+  }
+
+  function applyRange(from, to, close) {
+    state.filters.date_from = from || "";
+    state.filters.date_to = to || "";
+    state.page = 1;
+    syncFilterUI(); load(); renderStats();
+    if (close) closeDatePop();
+  }
+
+  function showMonthOf(iso) { const { y, m } = fromISO(iso); cal.y = y; cal.m = m; }
+
+  function openDatePop() {
+    cal.start = state.filters.date_from || "";
+    cal.end = state.filters.date_to || "";
+    cal.hover = "";
+    showMonthOf(cal.start || cal.end || todayISO());
+    cal.pop.hidden = false;
+    cal.btn.setAttribute("aria-expanded", "true");
+    renderCalendar();
+    cal.pop.classList.remove("flip");                                  // keep panel on screen
+    if (cal.pop.getBoundingClientRect().right > window.innerWidth - 8) cal.pop.classList.add("flip");
+  }
+  function closeDatePop() {
+    if (!cal.pop || cal.pop.hidden) return;
+    cal.pop.hidden = true;
+    cal.btn.setAttribute("aria-expanded", "false");
+  }
+
+  function pickDay(iso) {
+    if (!cal.start || cal.end) {                                       // 1st click: start a range
+      cal.start = iso; cal.end = ""; cal.hover = "";
+      renderCalendar();
+      return;
+    }
+    if (iso < cal.start) { cal.end = cal.start; cal.start = iso; } else cal.end = iso;
+    applyRange(cal.start, cal.end, true);                              // 2nd click: apply
+  }
+
+  function paintDays() {
+    const hi = cal.end || (cal.start && cal.hover >= cal.start ? cal.hover : "");
+    cal.grid.querySelectorAll(".day").forEach((b) => {
+      const d = b.dataset.iso;
+      b.classList.toggle("start", d === cal.start);
+      b.classList.toggle("end", !!hi && d === hi);
+      b.classList.toggle("range", !!cal.start && !!hi && d > cal.start && d < hi);
+      b.setAttribute("aria-pressed", String(d === cal.start || d === hi));
+    });
+    cal.from.value = cal.start; cal.to.value = cal.end;
+  }
+
+  function yearList() {
+    const now = new Date().getFullYear(), list = [];
+    for (let y = Math.min(2024, cal.y); y <= Math.max(now + 1, cal.y); y++) list.push(y);
+    return list;
+  }
+
+  function renderCalendar() {
+    cal.title.replaceChildren(
+      h("select", { "aria-label": "Month", onchange: (e) => { cal.m = Number(e.target.value); renderCalendar(); } },
+        MONTH_NAMES.map((n, i) => h("option", { value: i, selected: i === cal.m }, n))),
+      h("select", { "aria-label": "Year", onchange: (e) => { cal.y = Number(e.target.value); renderCalendar(); } },
+        yearList().map((y) => h("option", { value: y, selected: y === cal.y }, y))));
+
+    const lead = (new Date(cal.y, cal.m, 1).getDay() + 6) % 7;         // Monday-first
+    const today = todayISO();
+    const cells = [];
+    for (let i = 0; i < 42; i++) {
+      const dt = new Date(cal.y, cal.m, 1 - lead + i);
+      const iso = dateISO(dt);
+      cells.push(h("button", {
+        type: "button", class: "day" + (dt.getMonth() !== cal.m ? " other" : "") + (iso === today ? " today" : ""),
+        "data-iso": iso, "aria-label": fmtDate(iso), onclick: () => pickDay(iso),
+      }, String(dt.getDate())));
+    }
+    cal.grid.replaceChildren(...WEEKDAYS.map((w) => h("span", { class: "dow" }, w)), ...cells);
+    paintDays();
+  }
+
+  function stepMonth(n) {
+    const dt = new Date(cal.y, cal.m + n, 1);
+    cal.y = dt.getFullYear(); cal.m = dt.getMonth();
+    renderCalendar();
+  }
+
+  function buildDatePicker() {
+    cal.btn = h("button", {
+      type: "button", class: "datebtn", "aria-haspopup": "dialog", "aria-expanded": "false",
+      onclick: () => (cal.pop.hidden ? openDatePop() : closeDatePop()),
+    }, icon(ICONS.cal), h("span", { class: "lbl" }, "Date: all"));
+
+    cal.title = h("div", { class: "cal-title" });
+    cal.grid = h("div", { class: "cal-grid" });
+    cal.grid.addEventListener("mouseover", (e) => {                    // live range preview
+      const b = e.target.closest(".day");
+      if (!b || !cal.start || cal.end || cal.hover === b.dataset.iso) return;
+      cal.hover = b.dataset.iso; paintDays();
+    });
+    cal.grid.addEventListener("mouseleave", () => { if (cal.hover) { cal.hover = ""; paintDays(); } });
+
+    const onType = () => {                                             // typed dates
+      let a = cal.from.value, b = cal.to.value;
+      if (a && b && a > b) [a, b] = [b, a];
+      cal.start = a; cal.end = b; cal.hover = "";
+      if (a || b) showMonthOf(a || b);
+      renderCalendar();
+      applyRange(a, b, false);
+    };
+    cal.from = h("input", { type: "date", "aria-label": "From date", onchange: onType });
+    cal.to = h("input", { type: "date", "aria-label": "To date", onchange: onType });
+
+    const presets = h("div", { class: "cal-presets" },
+      datePresets().map(([label, a, b]) => h("button", { type: "button", onclick: () => applyRange(a, b, true) }, label)));
+
+    cal.pop = h("div", { class: "cal-pop", role: "dialog", "aria-label": "Filter by date", hidden: true },
+      presets,
+      h("div", { class: "cal-main" },
+        h("div", { class: "cal-nav" },
+          h("button", { type: "button", class: "icon-btn", "aria-label": "Previous month", onclick: () => stepMonth(-1), html: "<svg viewBox='0 0 24 24'><path d='m15 6-6 6 6 6'/></svg>" }),
+          cal.title,
+          h("button", { type: "button", class: "icon-btn", "aria-label": "Next month", onclick: () => stepMonth(1), html: "<svg viewBox='0 0 24 24'><path d='m9 6 6 6-6 6'/></svg>" })),
+        cal.grid,
+        h("div", { class: "cal-inputs" }, h("label", {}, "From", cal.from), h("label", {}, "To", cal.to)),
+        h("div", { class: "cal-foot" },
+          h("span", { class: "hint" }, "Click a start day, then an end day."),
+          h("button", { type: "button", class: "btn ghost", onclick: () => applyRange("", "", true) }, "Clear"))));
+
+    const wrap = h("div", { class: "date-wrap" }, cal.btn, cal.pop);
+    wrap.id = "dateWrap";
+    refreshDateButton();
+    return wrap;
   }
 
   function renderDatalists() {
@@ -529,10 +709,15 @@
       timer = setTimeout(() => { state.q = e.target.value.trim(); state.page = 1; syncFilterUI(); load(); }, 250);
     });
     $("#colsBtn").addEventListener("click", (e) => { e.stopPropagation(); $("#colsMenu").hidden = !$("#colsMenu").hidden; });
-    document.addEventListener("click", (e) => { if (!e.target.closest(".menu-wrap")) $("#colsMenu").hidden = true; });
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".menu-wrap")) $("#colsMenu").hidden = true;
+      // composedPath still works after the calendar re-renders its own buttons
+      if (!e.composedPath().includes($("#dateWrap"))) closeDatePop();
+    });
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
       if (!$("#confirm").hidden) closeConfirm();
+      else if (cal.pop && !cal.pop.hidden) { closeDatePop(); cal.btn.focus(); }
       else if (!$("#colsMenu").hidden) $("#colsMenu").hidden = true;
       else if ($("#drawer").classList.contains("open")) showDrawer(false);
     });

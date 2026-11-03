@@ -120,6 +120,14 @@ def filtered_queryset(cfg, params):
         val = params.get(param)
         if val:
             qs = qs.filter(**{field: val})
+    # Calendar date-range filter (inclusive, ISO yyyy-mm-dd). Either end may be omitted.
+    for param, lookup in (("date_from", "date__gte"), ("date_to", "date__lte")):
+        raw = (params.get(param) or "").strip()
+        if raw:
+            try:
+                qs = qs.filter(**{lookup: datetime.date.fromisoformat(raw)})
+            except ValueError:
+                pass  # ignore a malformed date instead of failing the request
     return qs
 
 
