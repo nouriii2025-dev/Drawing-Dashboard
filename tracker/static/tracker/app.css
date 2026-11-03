@@ -272,3 +272,22 @@ tbody tr:hover td.act .icon-btn, td.act .icon-btn:focus-visible { opacity: 1; }
   .cal-presets { flex-direction: row; flex-wrap: wrap; width: auto; border-right: 0; border-bottom: 1px solid var(--border); }
   .cal-main { width: auto; }
 }
+
+
+/* ---------- combobox (dropdown + manual entry) ---------- */
+.combo { display: flex; flex-direction: column; gap: 4px; }
+.cb-box { position: relative; }
+.cb-box input { padding-right: 34px; }
+.cb-toggle { position: absolute; right: 2px; top: 2px; width: 32px; height: 32px; border: 0; border-radius: 6px; background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.cb-toggle:hover { color: var(--text); background: var(--neutral-bg); }
+.cb-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.cb-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30; margin: 0; padding: 4px; list-style: none; max-height: 220px; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg); }
+.cb-list.up { top: auto; bottom: calc(100% + 4px); }
+.cb-list li { padding: 7px 10px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.cb-list li:hover, .cb-list li.active { background: var(--accent-soft); }
+.cb-list li.sel { color: var(--accent); font-weight: 600; }
+.cb-list .cb-new { color: var(--accent); border-top: 1px solid var(--border); border-radius: 0 0 6px 6px; }
+.cb-list .cb-new small { color: var(--muted); font-size: 11.5px; }
+.cb-list .cb-empty { color: var(--muted); cursor: default; }
+.cb-list .cb-empty:hover { background: none; }
+.cb-hint { color: var(--accent); font-size: 12px; }

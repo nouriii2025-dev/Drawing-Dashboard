@@ -178,7 +178,6 @@
       renderTabs();
       renderStats();
       renderFilters();
-      renderDatalists();
     } catch (e) { toast(e.message, true); }
   }
 
@@ -423,13 +422,6 @@
     return wrap;
   }
 
-  function renderDatalists() {
-    document.querySelectorAll("datalist.dyn").forEach((d) => d.remove());
-    for (const key of ["customer", "sales_person"]) {
-      document.body.append(h("datalist", { id: "dl-" + key, class: "dyn" },
-        (state.opts[key] || []).map((v) => h("option", { value: v }))));
-    }
-  }
 
   function renderColsMenu() {
     const vis = visibleKeys(state.view);
@@ -527,27 +519,117 @@
   /* ------------------------------------------------------------------ *
    *  Drawer (add / edit)
    * ------------------------------------------------------------------ */
-  function fieldFor(c, value, stretch) {
-    const id = "f-" + c.key;
-    let input;
-    if (c.type === "select") {
-      const list = [...(state.opts[c.opt] || [])];
-      if (value && !list.includes(value)) list.push(value);
-      input = h("select", { id, name: c.key }, h("option", { value: "" }, "—"), list.map((o) => h("option", { value: o, selected: o === value }, o)));
-    } else if (c.type === "area" || c.type === "path") {
-      input = h("textarea", { id, name: c.key, rows: c.type === "path" ? 2 : 3, class: c.type === "path" ? "mono" : "" });
-      input.value = value || "";
-    } else {
-      input = h("input", {
-        id, name: c.key, autocomplete: "off",
-        type: c.type === "date" ? "date" : c.type === "int" ? "number" : "text",
-        min: c.type === "int" ? 0 : null, list: c.type === "combo" ? "dl-" + c.opt : null,
+    const MASTER_KEYS = new Set(["status", "drawn_by", "software", "sales_person"]);
+    const CHEVRON = "<svg viewBox='0 0 24 24' aria-hidden='true'><path d='m6 9 6 6 6-6'/></svg>";
+
+    // Dropdown + free typing. Typed values that are not in the list are accepted as-is.
+    function combobox(c, value) {
+      const id = "f-" + c.key;
+      const managed = MASTER_KEYS.has(c.key);
+      const options = () => [...(state.opts[c.opt] || [])];
+      const input = h("input", {
+        id, name: c.key, type: "text", autocomplete: "off", placeholder: "Select or type…",
+        role: "combobox", "aria-autocomplete": "list", "aria-expanded": "false", "aria-controls": id + "-list",
       });
       input.value = value ?? "";
+      const list = h("ul", { class: "cb-list", id: id + "-list", role: "listbox", hidden: true });
+      const hint = h("span", { class: "cb-hint", hidden: true });
+      let showAll = false, active = -1;
+
+      const rows = () => [...list.querySelectorAll(".cb-opt, .cb-new")];
+      const setActive = (i) => {
+        const r = rows();
+        r.forEach((el, n) => el.classList.toggle("active", n === i));
+        active = r.length ? (i + r.length) % r.length : -1;
+        r[active]?.scrollIntoView({ block: "nearest" });
+      };
+      const isNew = () => {
+        const v = input.value.trim().toLowerCase();
+        return !!v && v !== "-" && !options().some((o) => o.toLowerCase() === v);
+      };
+      const refreshHint = () => {
+        const show = managed && isNew();
+        hint.hidden = !show;
+        if (show) hint.textContent = "New value — it will be added to Master Data when you save.";
+      };
+      const choose = (v) => { input.value = v; close(); refreshHint(); };
+      const render = () => {
+        const raw = input.value.trim(), q = raw.toLowerCase();
+        const all = options();
+        const matches = (showAll || !q ? all : all.filter((o) => o.toLowerCase().includes(q))).slice(0, 200);
+        const items = matches.map((o) => h("li", {
+          class: "cb-opt" + (o.toLowerCase() === q ? " sel" : ""), role: "option",
+          onmousedown: (e) => { e.preventDefault(); choose(o); },
+        }, o));
+        if (isNew()) items.push(h("li", {
+          class: "cb-new", role: "option",
+          onmousedown: (e) => { e.preventDefault(); choose(raw); },
+        }, `Use “${raw}”`, managed ? h("small", {}, "adds to Master Data") : null));
+        if (!items.length) items.push(h("li", { class: "cb-empty" }, "No saved values yet — just type one."));
+        list.replaceChildren(...items);
+        active = -1;
+      };
+      const open = (all) => {
+        showAll = all;
+        render();
+        list.hidden = false;
+        input.setAttribute("aria-expanded", "true");
+        const body = input.closest(".drawer-body");
+        if (body) {
+          const below = body.getBoundingClientRect().bottom - input.getBoundingClientRect().bottom;
+          const above = input.getBoundingClientRect().top - body.getBoundingClientRect().top;
+          list.classList.toggle("up", below < 230 && above > below);
+        }
+      };
+      function close() { list.hidden = true; input.setAttribute("aria-expanded", "false"); active = -1; }
+
+      input.addEventListener("focus", () => open(true));
+      input.addEventListener("click", () => { if (list.hidden) open(true); });
+      input.addEventListener("input", () => { open(false); refreshHint(); });
+      input.addEventListener("blur", close);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+          e.preventDefault();
+          if (list.hidden) open(true);
+          setActive(active + (e.key === "ArrowDown" ? 1 : -1));
+        } else if (e.key === "Enter" && !list.hidden && active >= 0) {
+          e.preventDefault();
+          rows()[active].dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+        } else if (e.key === "Escape" && !list.hidden) {
+          e.stopPropagation();          // close the list, not the whole drawer
+          close();
+        }
+      });
+      const toggle = h("button", {
+        type: "button", class: "cb-toggle", tabindex: "-1", "aria-label": "Show options", html: CHEVRON,
+        onmousedown: (e) => { e.preventDefault(); if (list.hidden) { input.focus(); open(true); } else close(); },
+      });
+      refreshHint();
+      return h("div", { class: "combo" }, h("div", { class: "cb-box" }, input, toggle, list), hint);
     }
-    return h("div", { class: "field" + (stretch ? " full" : ""), "data-key": c.key },
-      h("label", { for: id }, c.label), input, h("span", { class: "err", hidden: true }));
-  }
+
+    function fieldFor(c, value, stretch) {
+      const id = "f-" + c.key;
+      let input;
+      if (c.type === "select" || c.type === "combo") {
+        input = combobox(c, value);
+      } else if (c.type === "area" || c.type === "path") {
+        input = h("textarea", { id, name: c.key, rows: c.type === "path" ? 2 : 3, class: c.type === "path" ? "mono" : "" });
+        input.value = value || "";
+      } else {
+        input = h("input", {
+          id, name: c.key, autocomplete: "off",
+          type: c.type === "date" ? "date" : c.type === "int" ? "number" : "text",
+          min: c.type === "int" ? 0 : null,
+        });
+        input.value = value ?? "";
+      }
+      return h("div", { class: "field" + (stretch ? " full" : ""), "data-key": c.key },
+        h("label", { for: id }, c.label), input, h("span", { class: "err", hidden: true }));
+    }
+
+
+
 
   function buildForm(record) {
     const groups = [];
@@ -623,9 +705,12 @@
     $("#formError").hidden = true;
     try {
       const editing = state.editing;
-      await api(editing ? `${V().endpoint}${editing.id}/` : V().endpoint, { method: editing ? "PUT" : "POST", body: JSON.stringify(payload) });
+      const saved = await api(editing ? `${V().endpoint}${editing.id}/` : V().endpoint, { method: editing ? "PUT" : "POST", body: JSON.stringify(payload) });
       showDrawer(false);
       toast(editing ? "Changes saved" : "Record added");
+      if (saved && saved.master_added && saved.master_added.length) {
+        toast("Added to Master Data: " + saved.master_added.map((m) => m.value).join(", "));
+      }
       if (!editing) { state.sort = ""; state.page = 1; }
       await Promise.all([load(), loadMeta()]);
     } catch (err) {

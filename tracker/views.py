@@ -2,7 +2,7 @@ import datetime
 import io
 import json
 import re
-
+from django.db import IntegrityError, transaction
 from django.db.models import F, Max, Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
@@ -16,7 +16,7 @@ SHEET_LISTS = {
     "status": ["Ongoing", "Done", "Pending", "Rev B", "Rev C", "Canceld"],
     "software": ["AD", "AD/SD", "SD"],
     "drawn_by": ["Aravindh", "Machhindra"],
-    "approved_by": ["Huzefa Santrampurwala", "-", "Mohammed Santrampurwala", "Riaz Santrampurwala"],
+    "approved_by": ["Huzefa Santrampurwala", "Mohammed Santrampurwala", "Riaz Santrampurwala"],
     "issued_for": [
         "Submitted for Review", "Issued for Factory", "Submitted for Approval",
         "Submitted for Sample", "AS-BUILT",
@@ -51,6 +51,36 @@ RESOURCES = {
 }
 
 READ_ONLY = {"id", "position", "period", "created_at", "updated_at"}
+
+# Drawing fields that are backed by a Master Data category (same name).
+MASTER_FIELDS = ("status", "drawn_by", "software", "sales_person")
+
+
+def sync_master_data(values):
+    """Save manually typed values of Master Data-backed fields to Master Data.
+
+    Matching is case-insensitive: if "done" is typed and "Done" exists, the record
+    is normalised to "Done" instead of creating a duplicate. Returns the list of
+    newly created entries so the UI can tell the user.
+    """
+    added = []
+    for field in MASTER_FIELDS:
+        v = (values.get(field) or "").strip()
+        if not v or v == "-":
+            continue
+        existing = MasterData.objects.filter(category=field, value__iexact=v).first()
+        if existing:
+            values[field] = existing.value
+            continue
+        try:
+            with transaction.atomic():
+                MasterData.objects.create(category=field, value=v)
+            added.append({"category": field, "value": v})
+        except IntegrityError:
+            pass  # created by someone else a moment ago
+    return added
+
+
 
 
 def index(request):
@@ -162,8 +192,13 @@ def collection(request, resource):
             errors["__all__"] = "Fill in at least one field."
         if errors:
             return JsonResponse({"error": "Please fix the highlighted fields.", "errors": errors}, status=400)
-        obj = model.objects.create(**values)
-        return JsonResponse(serialize(obj), status=201)
+        with transaction.atomic():
+            added = sync_master_data(values) if model is DailyUpdate else []
+            obj = model.objects.create(**values)
+        data = serialize(obj)
+        if added:
+            data["master_added"] = added
+        return JsonResponse(data, status=201)
 
     qs = apply_sort(model, filtered_queryset(cfg, request.GET), request.GET.get("sort", ""))
     try:
@@ -202,9 +237,15 @@ def item(request, resource, pk):
         values, errors = parse_payload(model, raw)
         if errors:
             return JsonResponse({"error": "Please fix the highlighted fields.", "errors": errors}, status=400)
-        for k, v in values.items():
-            setattr(obj, k, v)
-        obj.save()
+        with transaction.atomic():
+            added = sync_master_data(values) if model is DailyUpdate else []
+            for k, v in values.items():
+                setattr(obj, k, v)
+            obj.save()
+        data = serialize(obj)
+        if added:
+            data["master_added"] = added
+        return JsonResponse(data)
     return JsonResponse(serialize(obj))
 
 
