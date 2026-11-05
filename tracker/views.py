@@ -360,7 +360,8 @@ def export_updates(request):
     from openpyxl.utils import get_column_letter
 
     cfg = RESOURCES["updates"]
-    qs = filtered_queryset(cfg, request.GET).order_by("position")
+    # Entry order: new drawings always get the next position, so this order is stable.
+    qs = filtered_queryset(cfg, request.GET).order_by("position", "id")
     fields = [f for f in DailyUpdate._meta.fields
               if f.name not in ("id", "position", "period", "created_at", "updated_at", "date_text")]
 
@@ -372,11 +373,14 @@ def export_updates(request):
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="334155")
         cell.alignment = Alignment(vertical="center", wrap_text=True)
-    for o in qs:
+        # S.No is a running 1, 2, 3... in entry order, generated at export time.
+    for n, o in enumerate(qs, start=1):
         row = []
         for f in fields:
             v = getattr(o, f.name)
-            if f.name == "date" and not v:
+            if f.name == "sno":
+                v = n
+            elif f.name == "date" and not v:
                 v = o.date_text or None
             row.append(v if v not in ("", None) else None)
         ws.append(row)
