@@ -46,6 +46,14 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .topbar { background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20; }
 .topbar-inner { max-width: 1680px; margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; gap: 28px; }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand-logo {
+    width: 110px;
+    height: auto;
+    max-height: 48px;
+    object-fit: contain;
+    display: block;
+    flex-shrink: 0;
+}
 .logo { width: 34px; height: 34px; border-radius: 9px; background: var(--accent); display: grid; place-items: center; color: #fff; }
 .logo svg { stroke-width: 2.4; width: 20px; height: 20px; }
 .brand strong { display: block; font-size: 15px; letter-spacing: -.01em; line-height: 1.2; }
@@ -291,3 +299,4 @@ tbody tr:hover td.act .icon-btn, td.act .icon-btn:focus-visible { opacity: 1; }
 .cb-list .cb-empty { color: var(--muted); cursor: default; }
 .cb-list .cb-empty:hover { background: none; }
 .cb-hint { color: var(--accent); font-size: 12px; }
+
